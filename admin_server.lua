@@ -2,7 +2,16 @@
 -- THIS IS OBSOLETE NOW, PLEASE USE THE WIKI TO ADD ADMINS
 admins = {}
 -- THIS IS OBSOLETE NOW, PLEASE USE THE WIKI TO ADD ADMINS
-
+permissions = {
+	ban = false,
+	kick = false,
+	spectate = false,
+	unban = false,
+	teleport = false,
+	manageserver = false,
+	slap = false,
+	freeze = false,
+}
 
 Citizen.CreateThread(function()
 	strings = json.decode(LoadResourceFile(GetCurrentResourceName(), "language/"..GetConvar("ea_LanguageName", "en")..".json"))[1]
@@ -10,37 +19,39 @@ Citizen.CreateThread(function()
 	moderationNotification = GetConvar("ea_moderationNotification", "false")
 	RegisterServerEvent('EasyAdmin:amiadmin')
 	AddEventHandler('EasyAdmin:amiadmin', function()
-		local banperm = DoesPlayerHavePermission(source,"easyadmin.ban")
-		local kickperm = DoesPlayerHavePermission(source,"easyadmin.kick")
-		local spectateperm = DoesPlayerHavePermission(source,"easyadmin.spectate")
-		local unbanperm = DoesPlayerHavePermission(source,"easyadmin.unban")
-		local teleportperm = DoesPlayerHavePermission(source,"easyadmin.teleport")
-		local manageserverperm = DoesPlayerHavePermission(source,"easyadmin.manageserver")
-		TriggerClientEvent("EasyAdmin:adminresponse", source, "ban",banperm)
-		TriggerClientEvent("EasyAdmin:adminresponse", source, "kick",kickperm)
-		TriggerClientEvent("EasyAdmin:adminresponse", source, "spectate",spectateperm)
-		TriggerClientEvent("EasyAdmin:adminresponse", source, "unban",unbanperm)
-		TriggerClientEvent("EasyAdmin:adminresponse", source, "teleport",teleportperm)
-		TriggerClientEvent("EasyAdmin:adminresponse", source, "manageserver",manageserverperm)
 		
-		if banperm then
+		local identifiers = GetPlayerIdentifiers(source)
+		for perm,val in pairs(permissions) do
+			local thisPerm = DoesPlayerHavePermission(source,"easyadmin."..perm)
+			TriggerClientEvent("EasyAdmin:adminresponse", source, perm,thisPerm)
+		end
+		
+		if DoesPlayerHavePermission(source,"easyadmin.ban") then
 			TriggerClientEvent('chat:addSuggestion', source, '/ban', strings.chatsuggestionban, { {name='player id', help="the player's server id"}, {name='reason', help="your reason."} } )
 		end
-		if kickperm then
+		if DoesPlayerHavePermission(source,"easyadmin.kick") then
 			TriggerClientEvent('chat:addSuggestion', source, '/kick', strings.chatsuggestionkick, { {name='player id', help="the player's server id"}, {name='reason', help="your reason."}} )
 		end
-		if spectateperm then
+		if DoesPlayerHavePermission(source,"easyadmin.spectate") then
 			TriggerClientEvent('chat:addSuggestion', source, '/spectate', strings.chatsuggestionspectate, { {name='player id', help="the player's server id"} })
 		end
-		if unbanperm then
+		if DoesPlayerHavePermission(source,"easyadmin.unban") then
 			TriggerClientEvent('chat:addSuggestion', source, '/unban', strings.chatsuggestionunban, { {name='identifier', help="the identifier ( such as steamid, ip or license )"} })
 		end
-		if teleportperm then
+		if DoesPlayerHavePermission(source,"easyadmin.teleport") then
 			TriggerClientEvent('chat:addSuggestion', source, '/teleport', strings.chatsuggestionteleport, { {name='player id', help="the player's server id"} })
 		end
-		if manageserverperm then
+		if DoesPlayerHavePermission(source,"easyadmin.manageserver") then
 			TriggerClientEvent('chat:addSuggestion', source, '/setgametype', strings.chatsuggestiongametype, { {name='game type', help="the game type"} })
 			TriggerClientEvent('chat:addSuggestion', source, '/setmapname', strings.chatsuggestionmapname, { {name='map name', help="the map name"} })
+		end
+		
+		if DoesPlayerHavePermission(source,"easyadmin.slap") then
+			TriggerClientEvent('chat:addSuggestion', source, '/slap', strings.chatsuggestionslap, { {name='player id', help="the player's server id"},{name='hp', help="the hp to take"} })
+		end
+		
+		if DoesPlayerHavePermission(source,"easyadmin.freeze") then
+			TriggerClientEvent('chat:addSuggestion', source, '/freeze', strings.chatsuggestionfreeze, { {name='player id', help="the player's server id"},{name='toggle', help="either true or false"} })
 		end
 		
 		-- give player the right settings to work with
@@ -102,36 +113,48 @@ Citizen.CreateThread(function()
 	RegisterServerEvent("EasyAdmin:banPlayer")
 	AddEventHandler('EasyAdmin:banPlayer', function(playerId,reason,expires)
 		if DoesPlayerHavePermission(source,"easyadmin.ban") then
+			local playerLicense = ""
+			local playerSteamid = false
 			local bannedIdentifiers = GetPlayerIdentifiers(playerId)
 			if expires < os.time() then
 				expires = os.time()+expires 
 			end
 			for i,identifier in ipairs(bannedIdentifiers) do
 				if string.find(identifier, "license:") then
-					reason = reason.. string.format(strings.reasonadd, GetPlayerName(playerId), GetPlayerName(source) )
-					reason = string.gsub(reason, "|", "") -- filter out any characters that could break me
-					reason = string.gsub(reason, ";", "")
-					updateBlacklist( {identifier = identifier, reason = reason, expire = expires or 10444633200 } )
+					playerLicense = identifier
+				elseif string.find(identifier, "steam:") then
+					playerSteamid = identifier
 				end
 			end
-			SendWebhookMessage(moderationNotification,string.format(strings.adminbannedplayer, GetPlayerName(source), GetPlayerName(playerId), reason))
+			reason = reason.. string.format(strings.reasonadd, GetPlayerName(playerId), GetPlayerName(source) )
+			local ban = {identifier = playerLicense, reason = reason, expire = expires or 10444633200 }
+			if playerSteamid then
+				ban = {identifier = playerLicense, steam = playerSteamid, reason = reason, expire = expires or 10444633200 }
+			end
+			updateBlacklist( ban )
+			
+			SendWebhookMessage(moderationNotification,string.format(strings.adminbannedplayer, GetPlayerName(source), GetPlayerName(playerId), reason, os.date('%d/%m/%Y 	%H:%M:%S', expires ) ))
 			DropPlayer(playerId, string.format(strings.banned, reason, os.date('%d/%m/%Y 	%H:%M:%S', expires ) ) )
 		end
 	end)
 	
-	RegisterServerEvent("banCheater")
 	AddEventHandler('banCheater', function(playerId,reason)
 		if not reason then reason = "Cheating" end
 		if GetPlayerName(source) then return end
 		local bannedIdentifiers = GetPlayerIdentifiers(playerId)
 		for i,identifier in ipairs(bannedIdentifiers) do
 			if string.find(identifier, "license:") then
-				reason = reason..string.format(strings.bancheatingadd, GetPlayerName(playerId) )
-				reason = string.gsub(reason, "|", "") -- filter out any characters that could break me
-				reason = string.gsub(reason, ";", "")
-				updateBlacklist( {identifier = identifier, reason = reason, expire = 10444633200} )
+				playerLicense = identifier
+			elseif string.find(identifier, "steam:") then
+				playerSteamid = identifier
 			end
 		end
+		reason = reason.. string.format(strings.bancheatingadd, GetPlayerName(playerId), GetPlayerName(source) )
+		local ban = {identifier = playerLicense, reason = reason, expire = expires or 10444633200 }
+		if playerSteamid then
+			ban = {identifier = playerLicense, steam = playerSteamid, reason = reason, expire = expires or 10444633200 }
+		end
+		updateBlacklist( ban )
 		DropPlayer(playerId, strings.bancheating)
 	end)
 	
@@ -195,15 +218,22 @@ Citizen.CreateThread(function()
 			end
 			if GetPlayerName(args[1]) then
 				local bannedIdentifiers = GetPlayerIdentifiers(args[1])
+				local playerLicense = ""
+				local playerSteamid = false
 				for i,identifier in ipairs(bannedIdentifiers) do
 					if string.find(identifier, "license:") then
-						reason = reason.. string.format(strings.reasonadd, GetPlayerName(args[1]), GetPlayerName(source) )
-						reason = string.gsub(reason, "|", "") -- filter out any characters that could break me
-						reason = string.gsub(reason, ";", "")
-						updateBlacklist( {identifier = identifier, reason = reason, expire = 10444633200} )
+						playerLicense = identifier
+					elseif string.find(identifier, "steam:") then
+						playerSteamid = identifier
 					end
 				end
-				SendWebhookMessage(moderationNotification,string.format(strings.adminbannedplayer, GetPlayerName(source), GetPlayerName(args[1]), reason))
+				reason = reason.. string.format(strings.reasonadd, GetPlayerName(args[1]), GetPlayerName(source) )
+				local ban = {identifier = playerLicense, reason = reason, expire = expires or 10444633200 }
+				if playerSteamid then
+					ban = {identifier = playerLicense, steam = playerSteamid, reason = reason, expire = expires or 10444633200 }
+				end
+				updateBlacklist( ban )
+				SendWebhookMessage(moderationNotification,string.format(strings.adminbannedplayer, GetPlayerName(source), GetPlayerName(args[1]), reason, os.date('%d/%m/%Y 	%H:%M:%S', expires ) ))
 				DropPlayer(args[1], string.format(strings.banned, reason, os.date('%d/%m/%Y 	%H:%M:%S', 10444633200 ) ) )
 			else
 				TriggerClientEvent("chat:addMessage", source, { args = { "EasyAdmin", strings.playernotfound } })
@@ -246,12 +276,38 @@ Citizen.CreateThread(function()
 			SetMapName(args[1])
 		end
 	end, false)
-	
+
+	RegisterCommand("slap", function(source, args, rawCommand)
+		if args[1] and args[2] and DoesPlayerHavePermission(source,"easyadmin.slap") then
+			SendWebhookMessage(moderationNotification,string.format(strings.adminslappedplayer, GetPlayerName(source), GetPlayerName(args[1]), args[2]))
+			TriggerClientEvent("EasyAdmin:SlapPlayer", args[1], args[2])
+		end
+	end, false)	
 	
 	RegisterServerEvent("EasyAdmin:TeleportPlayerToCoords")
 	AddEventHandler('EasyAdmin:TeleportPlayerToCoords', function(playerId,px,py,pz)
 		if DoesPlayerHavePermission(source,"easyadmin.teleport") then
 			TriggerClientEvent("EasyAdmin:TeleportRequest", playerId, px,py,pz)
+		end
+	end)
+	
+	RegisterServerEvent("EasyAdmin:SlapPlayer")
+	AddEventHandler('EasyAdmin:SlapPlayer', function(playerId,slapAmount)
+		if DoesPlayerHavePermission(source,"easyadmin.slap") then
+			SendWebhookMessage(moderationNotification,string.format(strings.adminslappedplayer, GetPlayerName(source), GetPlayerName(playerId), slapAmount))
+			TriggerClientEvent("EasyAdmin:SlapPlayer", playerId, slapAmount)
+		end
+	end)
+	
+	RegisterServerEvent("EasyAdmin:FreezePlayer")
+	AddEventHandler('EasyAdmin:FreezePlayer', function(playerId,toggle)
+		if DoesPlayerHavePermission(source,"easyadmin.freeze") then
+			if toggle then
+				SendWebhookMessage(moderationNotification,string.format(strings.adminfrozeplayer, GetPlayerName(source), GetPlayerName(playerId)))
+			else
+				SendWebhookMessage(moderationNotification,string.format(strings.adminunfrozeplayer, GetPlayerName(source), GetPlayerName(playerId)))
+			end
+			TriggerClientEvent("EasyAdmin:FreezePlayer", playerId, toggle)
 		end
 	end)
 	
@@ -362,6 +418,8 @@ Citizen.CreateThread(function()
 			for i,theBan in ipairs(blacklist) do
 				if theBan.expire < os.time() then
 					table.remove(blacklist,i)
+				elseif theBan.expire == 1924300800 then
+					blacklist[i].expire = 10444633200
 				end
 			end
 			SaveResourceFile(GetCurrentResourceName(), "banlist.json", json.encode(blacklist, {indent = true}), -1)
@@ -401,7 +459,7 @@ Citizen.CreateThread(function()
 		local numIds = GetPlayerIdentifiers(source)
 		for bi,blacklisted in ipairs(blacklist) do
 			for i,theId in ipairs(numIds) do
-				if blacklisted.identifier == theId then
+				if blacklisted.identifier == theId or (blacklisted.steam and blacklisted.steam == theId) then
 					Citizen.Trace("user is banned")
 					setKickReason(string.format( strings.bannedjoin, blacklist[bi].reason, os.date('%d/%m/%Y 	%H:%M:%S', blacklist[bi].expire )))
 					print("Connection Refused, Blacklisted for "..blacklist[bi].reason.."!\n")
